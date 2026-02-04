@@ -1,0 +1,175 @@
+### local development dependency ###
+data/
+./tests/
+experiments/local/
+.env
+
+### Build and Package Directories ###
+target/
+build/
+dist/
+downloads/
+sdist/
+.cdk.staging/
+cdk.out/
+site/
+!**/src/main/**/build/
+!**/src/test/**/build/
+!.mvn/wrapper/maven-wrapper.jar
+
+### Gradle ###
+.gradle/**
+### Language-specific ###
+# Java
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+.mtj.tmp/
+hs_err_pid*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+.eggs/
+lib/
+lib64/
+parts/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+__pypackages__/
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# JavaScript/TypeScript
+node_modules/
+package-lock.json
+
+### IDE and Editor files ###
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# VS Code
+.vscode/
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/nbdist/
+/.nb-gradle/
+
+# Other editors
+*.swp
+
+### Project Tooling ###
+# Gradle
+.gradle/
+
+# Docker
+docker/dynamodb/
+# docker-compose.yml
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+### Logs and databases ###
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+pip-log.txt
+pip-delete-this-directory.txt
+celerybeat-schedule
+celerybeat.pid
+
+### Documentation ###
+docs/_build/
+/site/
+
+### OS specific ###
+.DS_Store
+
+### Other tool caches ###
+# PyInstaller
+*.manifest
+*.spec
+
+# Translations
+*.mo
+*.pot
+
+# BlueJ
+*.ctxt
+
+# Jupyter
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# SageMath
+*.sage.py
+
+# Scrapy
+.scrapy/
+
+# Flask
+instance/
+.webassets-cache/
+
+# Knowledge Bank Specific Ignores
+services/knowledge_bank/api/utility/aws/settings.py
