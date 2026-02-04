@@ -1,0 +1,26 @@
+services:
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    volumes:
+      - ${NEO4J_HOME:-./neo4j-volumes}/neo4j/logs:/logs
+      - ${NEO4J_HOME:-./neo4j-volumes}/neo4j/data:/data
+      - ${NEO4J_HOME:-./neo4j-volumes}/neo4j/plugins:/plugins
+      - ${NEO4J_HOME:-./neo4j-volumes}/neo4j/import:/var/lib/neo4j/import
+    environment:
+      - NEO4J_AUTH=neo4j/your_password
+      - NEO4J_server_memory_pagecache_size=512M
+      - NEO4J_server_memory_heap_initial__size=512M
+      - NEO4J_server_memory_heap_max__size=1G
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    restart: always
+    networks:
+      - neo4j_net
+
+networks:
+  neo4j_net:
+    driver: bridge
+    external: true
+    name: knowledge-graph-network

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["poetry-core>=2.2.1"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "forward_kg_construction"
+version = "0.1.0"
+description = "Forward citation knowledge graph construction and semantic relation extraction package."
+authors = ["Akash Sujith <your-email@example.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+# Core dependencies
+tqdm = "*"
+numpy = "*"
+pandas = "*"
+# Neo4j for graph storage
+neo4j = "^5.28.2"
+# Environment and settings
+python-dotenv = "^1.2.1"
+pydantic = "^2.12.5"
+pydantic-settings = "^2.12.0"
+# Logging
+loguru = "^0.7.3"
+logging = "^0.4.9.6"
+# LLM inference
+langchain-groq = "^1.1.1"
+langchain-ollama = "^1.0.1"
+# Visualization for evaluation
+matplotlib = "^3.10.7"
+# Excel export for evaluation results
+openpyxl = "^3.1.5"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+black = "*"
+isort = "*"
+anthropic = "^0.77.1"
+
+[tool.black]
+line-length = 88
+skip-string-normalization = false
+
+[tool.isort]
+profile = "black"
+
