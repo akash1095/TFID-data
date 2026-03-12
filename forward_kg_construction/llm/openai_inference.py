@@ -18,7 +18,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import ValidationError
-
+from langchain_core.prompts import ChatPromptTemplate
 
 class OpenAIModel(Enum):
     """Available OpenAI-compatible models."""
@@ -46,28 +46,25 @@ class OpenAIModel(Enum):
 @dataclass
 class OpenAIConfig:
     """Configuration for OpenAI-compatible LLM inference."""
-    
-    model: str = "qwen2.5-7b"
+
+    model: str = "Qwen/Qwen3-8B"
     temperature: float = 0.3
-    max_tokens: int = 512
+    max_tokens: int = 1024  # Increased from 512 to allow complete JSON responses
     base_url: str = "http://localhost:8000/v1"  # vLLM default
     api_key: str = "EMPTY"  # vLLM doesn't need key
-    
-    # Sampling parameters
-    top_p: Optional[float] = 0.9
-    top_k: Optional[int] = 40
-    
-    # Anti-repetition (vLLM specific)
-    repetition_penalty: Optional[float] = 1.1
-    frequency_penalty: Optional[float] = 0.2
-    presence_penalty: Optional[float] = 0.1
-    
+
+    # Sampling parameters (OpenAI standard)
+    top_p: Optional[float] = None  # Don't set by default
+    frequency_penalty: Optional[float] = None  # Don't set by default
+    presence_penalty: Optional[float] = None  # Don't set by default
+
     # Performance
     timeout: int = 120
     max_retries: int = 3
-    
-    # vLLM specific
-    use_guided_json: bool = False  # Force valid JSON output
+
+    # Advanced options (use with caution)
+    use_guided_json: bool = False  # Force valid JSON output (vLLM only)
+    extra_body: Optional[Dict[str, Any]] = None  # For custom parameters
 
 
 class OpenAIInference:
@@ -109,25 +106,25 @@ class OpenAIInference:
                 "api_key": self.config.api_key,
                 "timeout": self.config.timeout,
                 "max_retries": self.config.max_retries,
+                "extra_body" :{
+                "chat_template_kwargs": {
+                    "enable_thinking": True  # Set to True to enable thinking mode
+                }
             }
-            
-            # Model-specific parameters (for vLLM)
-            model_kwargs = {}
-            
+            }
+
+            # Optional OpenAI-standard parameters
             if self.config.top_p is not None:
-                model_kwargs["top_p"] = self.config.top_p
-            if self.config.top_k is not None:
-                model_kwargs["top_k"] = self.config.top_k
-            if self.config.repetition_penalty is not None:
-                model_kwargs["repetition_penalty"] = self.config.repetition_penalty
+                kwargs["top_p"] = self.config.top_p
             if self.config.frequency_penalty is not None:
                 kwargs["frequency_penalty"] = self.config.frequency_penalty
             if self.config.presence_penalty is not None:
                 kwargs["presence_penalty"] = self.config.presence_penalty
-            
-            if model_kwargs:
-                kwargs["model_kwargs"] = model_kwargs
-            
+
+            # Extra body for custom parameters (e.g., vLLM-specific)
+            if self.config.extra_body is not None:
+                kwargs["model_kwargs"] = {"extra_body": self.config.extra_body}
+
             self._llm = ChatOpenAI(**kwargs)
         return self._llm
     
@@ -161,7 +158,7 @@ class OpenAIInference:
             # Add structured output and retry logic
             self._structured_cache[cache_key] = (
                 llm
-                .with_structured_output(schema)
+                .with_structured_output(schema, method="json_mode")
                 .with_retry(
                     retry_if_exception_type=(
                         OutputParserException,
@@ -178,7 +175,8 @@ class OpenAIInference:
         self,
         system_prompt: str,
         user_prompt: str,
-        additional_messages: Optional[List[BaseMessage]] = None
+        additional_messages: Optional[List[BaseMessage]] = None,
+        use_concat: bool = True
     ) -> List[BaseMessage]:
         """
         Build message list for LLM.
@@ -187,14 +185,24 @@ class OpenAIInference:
             system_prompt: System instruction
             user_prompt: User query/input
             additional_messages: Optional additional messages
+            use_concat: If True, concatenate system and user prompts into single user message
+                       (recommended for better performance with open-source models)
 
         Returns:
             List of messages ready for LLM
         """
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
+        if use_concat:
+            # Concatenate system and user prompts into single user message
+            # This works better for open-source models that don't pay attention to system messages
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+            messages = [HumanMessage(content=combined_prompt)]
+        else:
+            # Traditional split (system + user)
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+            messages = ChatPromptTemplate.from_messages(messages).format_messages()
 
         if additional_messages:
             messages.extend(additional_messages)
@@ -386,20 +394,20 @@ def get_vllm_client(
     base_url: str = "http://localhost:8000/v1",
     temperature: float = 0.3,
     max_tokens: int = 512,
-    use_guided_json: bool = True,
+    use_guided_json: bool = False,
 ) -> OpenAIInference:
     """
-    Factory function to create vLLM client.
+    Factory function to create vLLM/Ollama client with OpenAI-compatible API.
 
     Args:
-        model: Model name (as served by vLLM)
-        base_url: vLLM server URL
+        model: Model name (as served by vLLM/Ollama)
+        base_url: Server URL (e.g., http://localhost:11434/v1 for Ollama)
         temperature: Temperature for generation
         max_tokens: Max tokens to generate
-        use_guided_json: Use guided JSON generation (recommended)
+        use_guided_json: Use guided JSON generation (vLLM only, not Ollama)
 
     Returns:
-        OpenAIInference instance configured for vLLM
+        OpenAIInference instance configured for OpenAI-compatible API
     """
     config = OpenAIConfig(
         model=model,
@@ -407,9 +415,6 @@ def get_vllm_client(
         api_key="EMPTY",
         temperature=temperature,
         max_tokens=max_tokens,
-        repetition_penalty=1.1,  # Fix repeated tokens
-        frequency_penalty=0.2,
-        presence_penalty=0.1,
         use_guided_json=use_guided_json,
     )
 

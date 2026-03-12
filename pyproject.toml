@@ -32,6 +32,7 @@ langchain-ollama = "^1.0.1"
 matplotlib = "^3.10.7"
 # Excel export for evaluation results
 openpyxl = "^3.1.5"
+langchain-openai = "^1.1.11"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"

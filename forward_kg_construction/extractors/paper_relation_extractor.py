@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from forward_kg_construction.llm import LLAMA_8B_EXTRACT_PROMPT, LLAMA_8B_SYSTEM_PROMPT
 from forward_kg_construction.llm.llm_inference import LLMInference
 from forward_kg_construction.llm.ollama_inference import OllamaLLMInference
+from forward_kg_construction.llm.openai_inference import OpenAIInference
 from forward_kg_construction.llm.schema import RelationshipAnalysis
 
 
@@ -23,7 +24,7 @@ class PaperRelationExtractor:
         uri: str,
         user: str,
         password: str,
-        llm_client: LLMInference | OllamaLLMInference,
+        llm_client: LLMInference | OllamaLLMInference | OpenAIInference,
         min_delay: float = 1,
     ):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -424,4 +425,146 @@ class PaperRelationExtractor:
             time.sleep(self.min_delay)
 
         logger.info(f"Extracted relationships for {len(results)} triplets")
+        return results
+
+    async def process_all_triplets_batch(
+        self,
+        min_citation_count: int = 0,
+        head_min_year: int = 2022,
+        tail_min_year: int = 2022,
+        batch_size: int = 100,
+        max_concurrency: int = 32,
+    ) -> List[Dict]:
+        """
+        Process all triplets using batch processing with OpenAIInference.abatch() (FASTEST!).
+
+        This method uses the abatch() API which is optimized for maximum throughput.
+        It processes large batches of requests concurrently, making it ideal for
+        OpenAI-compatible endpoints like vLLM, Ollama with OpenAI API, etc.
+
+        Args:
+            min_citation_count: Minimum citation count filter
+            head_min_year: Minimum year for citing paper
+            tail_min_year: Minimum year for cited paper
+            batch_size: Number of triplets to process in each batch (default: 100)
+            max_concurrency: Maximum concurrent requests (default: 32)
+
+        Returns:
+            List of extraction results
+
+        Note:
+            This method requires llm_client to be an instance of OpenAIInference.
+            It will raise an error if used with other LLM clients.
+        """
+        # Check if llm_client supports batch processing
+        if not isinstance(self.llm_client, OpenAIInference):
+            raise ValueError(
+                "Batch processing requires OpenAIInference client. "
+                f"Current client type: {type(self.llm_client).__name__}"
+            )
+
+        triplets = self.get_non_processed_triplets(
+            min_citation_count, head_min_year, tail_min_year
+        )
+        logger.info(f"Found {len(triplets)} triplets to process")
+        logger.info(
+            f"Batch processing with batch_size={batch_size}, max_concurrency={max_concurrency}"
+        )
+
+        results = []
+        total_processed = 0
+        total_with_relations = 0
+
+        # Process in batches
+        for batch_start in range(0, len(triplets), batch_size):
+            batch_end = min(batch_start + batch_size, len(triplets))
+            batch = triplets[batch_start:batch_end]
+
+            logger.info(
+                f"Processing batch {batch_start // batch_size + 1}/"
+                f"{(len(triplets) + batch_size - 1) // batch_size} "
+                f"(triplets {batch_start + 1}-{batch_end} of {len(triplets)})"
+            )
+
+            # Build messages for all triplets in batch
+            messages_list = []
+            for idx, triplet in enumerate(batch):
+                # Use the full LLAMA_8B_EXTRACT_PROMPT template with instructions
+                user_prompt = LLAMA_8B_EXTRACT_PROMPT.format(
+                    citing_title=triplet['head_title'],
+                    citing_abstract=triplet['head_abstract'],
+                    cited_title=triplet['tail_title'],
+                    cited_abstract=triplet['tail_abstract']
+                )
+
+                # Log first prompt for debugging
+                if idx == 0 and batch_start == 0:
+                    logger.info(f"Sample prompt (first in batch):")
+                    logger.info(f"System: {LLAMA_8B_SYSTEM_PROMPT[:100]}...")
+                    logger.info(f"User: {user_prompt[:200]}...")
+
+                messages = self.llm_client.build_messages(
+                    system_prompt=LLAMA_8B_SYSTEM_PROMPT,
+                    user_prompt=user_prompt
+                )
+                messages_list.append(messages)
+
+            # Process entire batch with abatch (FASTEST!)
+            try:
+                batch_results = await self.llm_client.abatch(
+                    messages_list,
+                    schema=RelationshipAnalysis,
+                    max_concurrency=max_concurrency
+                )
+
+                # Save results to database
+                for triplet, analysis in zip(batch, batch_results):
+                    total_processed += 1
+
+                    if analysis and analysis.relationships:
+                        # Log what we extracted
+                        rel_types = [r.type for r in analysis.relationships]
+                        logger.debug(f"Extracted: {rel_types} for {triplet['head_id'][:20]}... -> {triplet['tail_id'][:20]}...")
+
+                        # Filter out No-Relation before counting
+                        valid_rels = [
+                            r
+                            for r in analysis.relationships
+                            if r.type.upper().replace("-", "_").replace(" ", "_")
+                            != "NO_RELATION"
+                        ]
+
+                        if valid_rels:
+                            logger.info(f"Valid relationships: {[r.type for r in valid_rels]}")
+                            # Save: citing (head) -> relationship -> cited (tail)
+                            self.save_relationships(
+                                triplet["head_id"], triplet["tail_id"], analysis
+                            )
+                            results.append(
+                                {
+                                    "citing_id": triplet["head_id"],
+                                    "cited_id": triplet["tail_id"],
+                                    "relationships": [
+                                        r.model_dump() for r in analysis.relationships
+                                    ],
+                                }
+                            )
+                            total_with_relations += 1
+                        else:
+                            logger.info(f"No valid relationships (all were No-Relation)")
+
+                logger.info(
+                    f"Batch complete: {total_processed} processed, "
+                    f"{total_with_relations} with valid relationships"
+                )
+
+            except Exception as e:
+                logger.error(f"Batch processing failed: {e}")
+                # Continue with next batch instead of failing completely
+                continue
+
+        logger.info(
+            f"Batch processing complete: {total_processed} triplets processed, "
+            f"{total_with_relations} with valid relationships"
+        )
         return results

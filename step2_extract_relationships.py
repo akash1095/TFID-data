@@ -25,6 +25,7 @@ from loguru import logger
 
 from forward_kg_construction.extractors.paper_relation_extractor import PaperRelationExtractor
 from forward_kg_construction.llm.ollama_inference import OllamaLLMInference, OllamaConfig, OllamaModel
+from forward_kg_construction.llm.openai_inference import OpenAIInference, OpenAIConfig
 
 # Load environment variables
 load_dotenv()
@@ -85,26 +86,66 @@ def main():
     parser.add_argument("--max-concurrent", type=int, default=4, help="Max concurrent requests (async mode)")
     parser.add_argument("--batch-size", type=int, default=20, help="Batch size (async mode)")
     parser.add_argument("--resume", action="store_true", help="Resume from where you left off")
-    parser.add_argument("--model", default="qwen2.5:7b", help="Ollama model name (default: qwen2.5:7b)")
+    parser.add_argument("--model", default="qwen2.5:7b", help="Model name (default: qwen2.5:7b)")
     parser.add_argument("--context-window", type=int, default=8192, help="Context window size (default: 8192)")
+
+    # Backend selection
+    parser.add_argument("--backend", choices=["ollama", "openai"], default="ollama",
+                        help="LLM backend to use (default: ollama)")
+    parser.add_argument("--openai-url", default="http://localhost:11434/v1",
+                        help="OpenAI-compatible API URL (default: http://localhost:11434/v1)")
+    parser.add_argument("--openai-api-key", default=None,
+                        help="API key for OpenAI-compatible endpoint (e.g., Vast.ai open_button_key)")
+    parser.add_argument("--batch-mode", action="store_true",
+                        help="Use batch processing mode (requires --backend openai, FASTEST!)")
+    parser.add_argument("--batch-concurrency", type=int, default=32,
+                        help="Max concurrent requests in batch mode (default: 32)")
+    parser.add_argument("--max-tokens", type=int, default=1024,
+                        help="Maximum tokens for LLM response (default: 1024)")
+
     args = parser.parse_args()
     
     start_time = time.time()
-    
+
     logger.info("=" * 80)
     logger.info("STEP 2: Extract Semantic Relationships with LLM")
     logger.info("=" * 80)
-    
-    # Initialize LLM client
-    logger.info(f"Initializing Ollama LLM ({args.model})...")
-    logger.info(f"Context window: {args.context_window} tokens")
-    llm_config = OllamaConfig(
-        model=OllamaModel(args.model),
-        temperature=0.3,
-        base_url=LLM_BASE_URL,
-        num_ctx=args.context_window  # Set context window
-    )
-    llm_client = OllamaLLMInference(config=llm_config)
+
+    # Validate batch mode
+    if args.batch_mode and args.backend != "openai":
+        logger.error("--batch-mode requires --backend openai")
+        return
+
+    # Initialize LLM client based on backend
+    if args.backend == "openai":
+        logger.info(f"Initializing OpenAI-compatible LLM ({args.model})...")
+        logger.info(f"API URL: {args.openai_url}")
+        if args.batch_mode:
+            logger.info(f"Batch mode enabled with max_concurrency={args.batch_concurrency}")
+
+        # Get API key from args or environment variable
+        api_key = args.openai_api_key or os.getenv("OPENAI_API_KEY", "EMPTY")
+        if api_key != "EMPTY":
+            logger.info(f"Using API key: {api_key[:8]}...")
+
+        llm_config = OpenAIConfig(
+            model=args.model,
+            temperature=0.1,
+            base_url=args.openai_url,
+            api_key=api_key,
+            max_tokens=args.max_tokens,
+        )
+        llm_client = OpenAIInference(config=llm_config)
+    else:
+        logger.info(f"Initializing Ollama LLM ({args.model})...")
+        logger.info(f"Context window: {args.context_window} tokens")
+        llm_config = OllamaConfig(
+            model=OllamaModel(args.model),
+            temperature=0.3,
+            base_url=LLM_BASE_URL,
+            num_ctx=args.context_window  # Set context window
+        )
+        llm_client = OllamaLLMInference(config=llm_config)
     
     # Initialize extractor
     logger.info("Initializing relation extractor...")
@@ -113,7 +154,7 @@ def main():
         user=NEO4J_USER,
         password=NEO4J_PASSWORD,
         llm_client=llm_client,
-        min_delay=0.5
+        min_delay=0.0
     )
     
     try:
@@ -158,12 +199,27 @@ def main():
         
         # Process triplets
         logger.info(f"\nExtracting relationships...")
-        logger.info(f"Mode: {'Async' if args.async_mode else 'Sync'}")
-        if args.async_mode:
+
+        if args.batch_mode:
+            logger.info(f"Mode: Batch (FASTEST!)")
+            logger.info(f"Batch size: {args.batch_size}")
+            logger.info(f"Max concurrency: {args.batch_concurrency}")
+            logger.info("You can stop with Ctrl+C and resume later\n")
+
+            results = asyncio.run(
+                extractor.process_all_triplets_batch(
+                    min_citation_count=0,
+                    head_min_year=2021,
+                    tail_min_year=2017,
+                    batch_size=args.batch_size,
+                    max_concurrency=args.batch_concurrency
+                )
+            )
+        elif args.async_mode:
+            logger.info(f"Mode: Async")
             logger.info(f"Max concurrent: {args.max_concurrent}")
-        logger.info("You can stop with Ctrl+C and resume later\n")
-        
-        if args.async_mode:
+            logger.info("You can stop with Ctrl+C and resume later\n")
+
             results = asyncio.run(
                 extractor.process_all_triplets_async(
                     min_citation_count=0,
@@ -174,6 +230,9 @@ def main():
                 )
             )
         else:
+            logger.info(f"Mode: Sync")
+            logger.info("You can stop with Ctrl+C and resume later\n")
+
             results = extractor.process_all_triplets(
                 min_citation_count=0,
                 head_min_year=2021,
