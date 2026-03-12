@@ -139,16 +139,11 @@ Abstract: {cited_abstract}
 
 
 RELATIONSHIP TYPES (pick all that apply):
-* Implements: Uses the cited method or algorithm directly without modification
-* Builds-On: Uses the cited work as a base and adds new components or modules on top without altering its core
+
 * Extends: Modifies, Build upon or improves the methodology, framework, or theoretical approach from the cited paper
-* Adapts: Applies the same core method or concept to a different domain, task, or modality
+* Adapts: Applies the same core method or concept to a different domain, task, or modality. Applies the cited method in a new context without fundamentally changing its internals
 * Outperforms: The citing paper directly compares its method against the cited paper's method on the same task and reports superior quantitative performance
-* Compares-With: Uses the cited method as a baseline for neutral or mixed-performance comparison
-* Contradicts: Presents evidence contradicting cited paper's claims
-* Analyzes: Investigates or analyzes the properties, behavior, limitations, or characteristics of the cited method
-* Surveys: Reviews or categorizes the cited work in a literature survey
-* Evaluates-On: Evaluates its method on a dataset or benchmark introduced in the cited work
+* Analyzes: Investigates, Survey or analyzes the properties, behavior, limitations, or characteristics of the cited method
 
 If None of the above relationships apply, respond with No-Relation.
 No-Relation: If the papers are on different topics or there is no explicit reference to the cited paper's contribution
@@ -162,7 +157,6 @@ KEY DISTINCTIONS:
 RULES:
 1. Only identify relationships with clear evidence between CITING and CITED papers
 2. Quote specific text as evidence and explanation in 20 words each
-
 
 Respond with this exact JSON format:
 {{"relationships": [{{"type": "TypeName", "confidence": "high|medium|low", "evidence": "quote from abstract", "explanation": "why this relationship exists"}}]}}"""

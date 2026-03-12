@@ -1,7 +1,7 @@
 services:
   neo4j:
     image: neo4j:latest
-    container_name: neo4j
+    container_name: fkg-neo4j
     volumes:
       - ${NEO4J_HOME:-./neo4j-volumes}/neo4j/logs:/logs
       - ${NEO4J_HOME:-./neo4j-volumes}/neo4j/data:/data

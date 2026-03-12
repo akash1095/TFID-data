@@ -46,6 +46,7 @@ def run_extraction(args):
         model=model,
         base_url=args.ollama_url,
         temperature=0.1,
+        num_ctx=8192,  # Set context window to 8K
     )
     llm_client = OllamaLLMInference(config=llm_config)
 
