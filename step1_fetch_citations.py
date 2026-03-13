@@ -113,19 +113,30 @@ def main():
             logger.info("✅ Seed paper already exists in Neo4j")
             seed_id = SEED_PAPER_ID
         
-        # Fetch ALL citations (paginated, unlimited)
+        # Fetch ALL citations year by year (API range filter is broken)
         logger.info(f"\nFetching ALL citations from {YEAR_FILTER}...")
+        logger.info("Fetching year by year due to API limitations with range filters")
         logger.info("This will fetch ALL pages - may take 10-30 minutes depending on API rate limits")
         logger.info("You can stop with Ctrl+C and resume later (already added papers will be skipped)")
-        
-        citations = ss_client.get_paper_citations(
-            paper_id=SEED_PAPER_ID,
-            paginate=True,  # Fetch all pages
-            publication_year=YEAR_FILTER,
-            max_results=None  # Unlimited - get ALL papers
-        )
-        
-        logger.info(f"\n✅ Fetched {len(citations)} citing papers from {YEAR_FILTER}")
+
+        # Parse year range
+        start_year, end_year = map(int, YEAR_FILTER.split(':'))
+        years = range(start_year, end_year + 1)
+
+        all_citations = []
+        for year in years:
+            logger.info(f"\nFetching citations from year {year}...")
+            year_citations = ss_client.get_paper_citations(
+                paper_id=SEED_PAPER_ID,
+                paginate=True,  # Fetch all pages
+                publication_year=str(year),  # Single year at a time
+                max_results=None  # Unlimited - get ALL papers
+            )
+            logger.info(f"  ✅ Fetched {len(year_citations)} papers from {year}")
+            all_citations.extend(year_citations)
+
+        citations = all_citations
+        logger.info(f"\n✅ Total fetched: {len(citations)} citing papers from {YEAR_FILTER}")
         
         # Show year distribution
         year_counts = {}
